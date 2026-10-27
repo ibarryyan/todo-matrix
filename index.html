@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>日程记 · 点阵台账</title>
+<meta name="description" content="每天先写一份待办清单，完成即盖章，用点阵图看见自己的节奏。">
+<meta name="theme-color" content="#F2ECE1">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Noto+Sans+SC:wght@400;500&family=Noto+Serif+SC:wght@700&display=swap">
+
+<link rel="stylesheet" href="styles/tokens.css">
+<link rel="stylesheet" href="styles/base.css">
+<link rel="stylesheet" href="styles/components.css">
+</head>
+<body>
+<div class="grain" aria-hidden="true"></div>
+
+<div class="shell">
+
+  <!-- ============ 报头 ============ -->
+  <header class="masthead reveal">
+    <div class="masthead__stamp">
+      <span class="masthead__num" id="bigDay">27</span>
+      <span class="masthead__meta">
+        <span class="masthead__ym" id="bigYM">十月 · 2026</span>
+        <span class="masthead__wd" id="bigWd">TUE</span>
+      </span>
+    </div>
+
+    <p class="masthead__lede" id="lede">今天打算做完哪几件事？先写下来，写完再开始。</p>
+
+    <div class="masthead__tools">
+      <nav class="daynav" aria-label="切换日期">
+        <button class="daynav__btn" id="prevDay" type="button" aria-label="前一天">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button class="daynav__today num" id="todayBtn" type="button">今天</button>
+        <button class="daynav__btn" id="nextDay" type="button" aria-label="后一天">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </nav>
+      <button class="theme-toggle" id="themeBtn" type="button" aria-label="切换明暗主题">
+        <svg class="i-sun" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="4.2"/>
+          <path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.2 5.2l1.6 1.6M17.2 17.2l1.6 1.6M18.8 5.2l-1.6 1.6M6.8 17.2l-1.6 1.6" stroke-linecap="round"/>
+        </svg>
+        <svg class="i-moon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M20 14.4A8.4 8.4 0 1 1 9.6 4a6.8 6.8 0 0 0 10.4 10.4z" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- ============ 主栅格 ============ -->
+  <div class="board">
+
+    <!-- —— 今日台账 —— -->
+    <section class="area-ledger panel reveal" data-delay="1" aria-labelledby="ledgerTitle">
+      <div class="panel__head">
+        <h2 class="panel__title" id="ledgerTitle">
+          <span id="ledgerDayLabel">今日台账</span>
+          <small id="ledgerDayKey">2026-10-27</small>
+        </h2>
+        <button class="btn-ghost" id="clearDoneBtn" type="button" hidden>清除已完成</button>
+      </div>
+
+      <div class="composer">
+        <div class="composer__row">
+          <div class="composer__field">
+            <span class="composer__mark" aria-hidden="true">›</span>
+            <input class="composer__input" id="taskInput" type="text" maxlength="120"
+                   placeholder="写下今天要做的一件事…" autocomplete="off"
+                   aria-label="新任务内容">
+          </div>
+          <button class="btn-add" id="addBtn" type="button">记上一笔</button>
+        </div>
+        <p class="composer__hint">
+          <span>按 <kbd>Enter</kbd> 快速记录 · 点方框盖章完成</span>
+          <span class="num" id="counter">0 / 0</span>
+        </p>
+      </div>
+
+      <div class="ledger">
+        <ol class="ledger__list" id="taskList"></ol>
+
+        <div class="empty" id="emptyState" hidden>
+          <div class="empty__grid" aria-hidden="true"></div>
+          <p class="empty__title">这一天还没有落笔</p>
+          <p class="empty__desc">先写下第一件事。<br>写得出来，就做得完。</p>
+          <button class="empty__seed" id="seedBtn" type="button" hidden>填入一段示例记录</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- —— 计分条 —— -->
+    <aside class="area-ticker panel reveal" data-delay="2" aria-label="完成统计">
+      <div class="ticker">
+        <div class="ticker__hero">
+          <span class="ticker__big" id="tDone">0</span>
+          <span class="ticker__of" id="tTotal">/ 0</span>
+          <span class="ticker__cap" id="tCap">今日完成</span>
+        </div>
+        <div class="meter" role="img" id="meterWrap" aria-label="完成度 0%">
+          <div class="meter__fill" id="meterFill"></div>
+        </div>
+        <div class="stats">
+          <div class="stat">
+            <div class="stat__k" id="sStreak">0<span class="stat__u">天</span></div>
+            <div class="stat__v">连续完成</div>
+          </div>
+          <div class="stat">
+            <div class="stat__k" id="sWeek">—<span class="stat__u">%</span></div>
+            <div class="stat__v">本周完成率</div>
+          </div>
+          <div class="stat">
+            <div class="stat__k" id="sAll">0</div>
+            <div class="stat__v">累计盖章</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- —— 点阵图 —— -->
+    <section class="area-matrix panel reveal" data-delay="3" aria-labelledby="matrixTitle">
+      <div class="panel__head">
+        <h2 class="panel__title" id="matrixTitle">
+          点阵台账
+          <small>DOT MATRIX · 最近 18 周</small>
+        </h2>
+        <button class="btn-ghost" id="genBtn" type="button">生成点阵图</button>
+      </div>
+
+      <div class="matrix">
+        <div class="matrix__scroll" id="matrixScroll">
+          <div class="matrix__grid" id="matrixGrid" role="group" aria-label="每日任务量点阵图，共 18 周"></div>
+        </div>
+
+        <div class="matrix__legend">
+          <span class="legend-group">
+            任务量
+            <span class="legend-dots" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+            少 → 多
+          </span>
+          <span class="legend-group">
+            完成度
+            <span class="legend-swatches" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+            未动 → 全完成
+          </span>
+          <span class="spacer"></span>
+          <span>点一下任意一天，可回到那天补记</span>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <footer class="footline">
+    <span>数据保存在本机浏览器 localStorage</span>
+    <span><button type="button" id="wipeBtn">清空全部记录</button></span>
+  </footer>
+</div>
+
+<p class="sr-only" id="live" role="status" aria-live="polite"></p>
+
+<script src="scripts/main.js"></script>
+</body>
+</html>

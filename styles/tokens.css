@@ -1,0 +1,120 @@
+/* ============================================================
+   设计令牌 —— 方向：账簿 / 打孔卡
+   Industrial utilitarian × print ledger
+   纸与墨为底色，印泥朱红为唯一强调色，点阵墨阶承载数据
+   ============================================================ */
+
+:root {
+  color-scheme: light;
+
+  /* —— 纸面 —— */
+  --paper:        #F2ECE1;   /* 主纸底（暖调，非纯白） */
+  --paper-deep:   #E8E0D1;   /* 压凹的纸 */
+  --surface:      #FBF7F0;   /* 抬起的卡片 */
+  --surface-2:    #F5EEE3;   /* 卡片内次级面 */
+  --surface-sunk: #EBE3D5;   /* 输入框等下沉面 */
+
+  /* —— 墨 —— */
+  --ink:       #1C1A17;   /* 正文墨：对比度 13.5:1 */
+  --ink-2:     #403A32;   /* 次级墨 */
+  --ink-muted: #6B6255;   /* 弱化文字：对比度 5.1:1（满足正文标准） */
+
+  /* —— 线与痕 —— */
+  --rule:        rgba(28, 26, 23, 0.14);   /* 发丝线 */
+  --rule-strong: rgba(28, 26, 23, 0.30);
+  --ledger:      rgba(200, 64, 31, 0.26);  /* 账本红线 */
+
+  /* —— 强调色：印泥朱红，全站仅此一个 —— */
+  --accent:      #C8401F;                  /* 填充/描边（配白字 5.0:1） */
+  --accent-deep: #95290F;                  /* 朱红文字（6.9:1） */
+  --accent-wash: rgba(200, 64, 31, 0.10);
+
+  /* —— 点阵墨阶：编码"完成度" —— */
+  --dot-empty: #E2DACA;   /* 当天无记录 */
+  --dot-1:     #B9AE92;   /* 完成 0%   —— 有计划，未动手 */
+  --dot-2:     #8E8259;   /* 完成 <50% */
+  --dot-3:     #5B4F35;   /* 完成 <100% */
+  --dot-4:     #2A2318;   /* 完成 99%  以下的深墨 */
+  --dot-done:  var(--accent); /* 全部完成 —— 盖章朱红 */
+
+  --focus: #2F5D8C;       /* 焦点圈 */
+
+  /* —— 字体 —— */
+  --font-display: "Archivo Black", "Noto Serif SC", "Songti SC", "STSong", serif;
+  --font-serif:   "Noto Serif SC", "Songti SC", "STSong", Georgia, serif;
+  --font-body:    "IBM Plex Sans", "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", sans-serif;
+  --font-mono:    "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  /* —— 字阶（1.25 模块化比例） —— */
+  --fs-00: 12px;
+  --fs-01: 13px;
+  --fs-02: 15px;
+  --fs-03: 19px;
+  --fs-04: 24px;
+  --fs-05: 30px;
+  --fs-06: 37px;
+  --fs-07: 47px;
+  --fs-08: 58px;
+  --fs-mega: clamp(76px, 13vw, 152px);
+
+  /* —— 间距梯度 —— */
+  --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px;
+  --sp-5: 24px; --sp-6: 32px; --sp-7: 48px; --sp-8: 64px; --sp-9: 96px;
+
+  /* —— 圆角（印刷物几乎无圆角，刻意压小） —— */
+  --r-sm: 2px; --r-md: 4px; --r-lg: 8px;
+
+  /* —— 阴影三级：Y 偏移 2 / 8 / 24，带环境色而非纯黑 —— */
+  --sh-1: 0 1px 2px rgba(52, 40, 26, 0.10), 0 2px 6px rgba(52, 40, 26, 0.06);
+  --sh-2: 0 2px 6px rgba(52, 40, 26, 0.10), 0 8px 22px rgba(52, 40, 26, 0.10);
+  --sh-3: 0 6px 16px rgba(52, 40, 26, 0.12), 0 24px 56px rgba(52, 40, 26, 0.16);
+
+  /* —— 动效 —— */
+  --ease-out:    cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-inout:  cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-1: 160ms;
+  --dur-2: 320ms;
+  --dur-3: 640ms;
+
+  /* —— 构成 —— */
+  --gutter: clamp(20px, 4vw, 56px);
+  --shell: 1360px;
+  --cell: clamp(21px, 2.6vw, 30px);  /* 点阵单元格 */
+}
+
+/* ============================================================
+   暗色：夜间账房 —— 只覆盖语义令牌，组件代码一行不动
+   ============================================================ */
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --paper:        #14120F;
+  --paper-deep:   #0F0D0B;
+  --surface:      #1C1915;
+  --surface-2:    #221E18;
+  --surface-sunk: #100E0C;
+
+  --ink:       #F0E9DC;
+  --ink-2:     #D6CCBA;
+  --ink-muted: #A79C8A;   /* 6.9:1 */
+
+  --rule:        rgba(240, 233, 220, 0.14);
+  --rule-strong: rgba(240, 233, 220, 0.30);
+  --ledger:      rgba(224, 92, 56, 0.32);
+
+  --accent:      #E05C38;
+  --accent-deep: #F0896A;
+  --accent-wash: rgba(224, 92, 56, 0.14);
+
+  --dot-empty: #2A2620;
+  --dot-1:     #4A4238;
+  --dot-2:     #776A54;
+  --dot-3:     #A89473;
+  --dot-4:     #D6CCBA;
+
+  --focus: #7FB2E5;
+
+  --sh-1: 0 1px 2px rgba(0, 0, 0, 0.50), 0 2px 6px rgba(0, 0, 0, 0.30);
+  --sh-2: 0 2px 6px rgba(0, 0, 0, 0.50), 0 8px 22px rgba(0, 0, 0, 0.36);
+  --sh-3: 0 6px 16px rgba(0, 0, 0, 0.55), 0 24px 56px rgba(0, 0, 0, 0.45);
+}
