@@ -271,8 +271,9 @@ renderMatrix(withSweep) ← state.days（全量）
   即**远程侧已接受此现状**，除非另有决定，**维持现状不动**。
 - `[待确认]` `version` 字段的演进策略：是否需要为未来版本预留迁移函数。
 - `[待确认]` 多标签页并发写入是否需要处理（新增 `storage` 事件监听）。
-- `[待确认]` 本地协作文档（`AGENTS.md` / `docs/design-notes.md` / `docs/architecture.md` /
-  `tasks/` / `lessons.md`）是否纳入 Git 管理。目前**未跟踪**，未进入任何提交。
+- `[已决定 2026-11-01]` 本地协作文档（`AGENTS.md` / `docs/design-notes.md` /
+  `docs/architecture.md` / `tasks/` / `lessons.md`）已纳入 Git 并推送（提交 `5c6f807`）。
+  `.workbuddy/`（本地工具数据）已加入 `.gitignore`，不入库。
 - 任务级待确认项见 `tasks/TASK-001.md`。
 
 ---
@@ -289,6 +290,6 @@ renderMatrix(withSweep) ← state.days（全量）
 | 4 | L148–155 「手动备份，在浏览器控制台执行 `copy(localStorage.getItem('dotledger.v1'))`」 | 当前确实无导出 UI | ✅ 准确，但**是 TASK-001 要消除的痛点**；实现后须同步更新此段与 L164「没有数据导出按钮」 |
 | 5 | L103 「`main.js` 约 18KB」 | 实际 18,346 字节 ≈ 17.9KB | ✅ 准确 |
 | 6 | L166 「点阵图回溯 18 周，更早的记录不会显示」 | `WEEKS = 18`；更早数据仍在 `state.days` 中只是不渲染 | ✅ 准确 |
-| 7 | L93–105 目录结构 | 未列出 `docs/preview.svg`；接入后新增 `docs/design-notes.md`、`AGENTS.md`、`tasks/`、`lessons.md` 也未列出 | ⚠️ 遗漏，取决于第 10 节「本地文档是否入 Git」的确认结果 |
+| 7 | L93–109 目录结构 | 原未列出 `docs/preview.svg`；2026-11-01 已在提交 `5c6f807` 中补全 `docs/`、`tasks/`、`AGENTS.md`、`lessons.md`，并加注「对外 README vs 对内 design-notes」的分工说明 | ✅ 已修正 |
 | 8 | L132–137 可访问性 | 与代码实现一致（44px、`focus-visible` 2px+2px、`role="status"`、三通道冗余） | ✅ 准确 |
 | 9 | L117–126 动效规格 | 与 `components.css` 的 `--dur-*` / `stamp 620ms` / `dotPop 520ms` 完全一致 | ✅ 准确 |

@@ -184,10 +184,11 @@ todo-matrix/
 
 ## 附：当前已知待确认事项
 
-- **是否把本地协作文档纳入版本管理**：`AGENTS.md` / `docs/architecture.md` /
-  `docs/design-notes.md` / `tasks/` / `lessons.md` 目前为**未跟踪**（未 `git add`、未 push）。
-  若要长期只留在本地，建议加入 `.gitignore`；若要随仓库分发给协作者，需显式提交。
-  **此项待用户确认，Agent 不得自行决定。**
+- `[已决定 2026-11-01]` **协作文档随仓库分发**（选项 B）：`AGENTS.md` / `docs/architecture.md` /
+  `docs/design-notes.md` / `tasks/TASK-001.md` / `lessons.md` 已提交并推送到 `master`
+  （提交 `5c6f807`）。协作者 clone 后自带完整协作上下文。
+  **例外**：`.workbuddy/`（WorkBuddy 本地工具数据与会话记忆）已加入 `.gitignore`，永不入库 ——
+  不要强行 `git add -f`。
 - `README.md`（远程发布版）第 107 行称「组件层没有一个硬编码色值」，与 `components.css` 实际不符
   （见第 2 节）。修正与否待确认。
 - 其余待确认项见 `docs/architecture.md` 末尾与 `tasks/TASK-001.md` 的「待确认」小节。
