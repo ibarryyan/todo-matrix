@@ -101,8 +101,18 @@ todo-matrix/
 │   └── components.css    报头 / 台账行 / 计分条 / 点阵图 / 响应式断点
 ├── scripts/
 │   └── main.js           日期工具、状态管理、渲染、事件、主题（约 18KB，无框架）
+├── docs/
+│   ├── architecture.md   实现架构：启动流程、数据结构、持久化、渲染流程、技术限制
+│   ├── design-notes.md   内部设计与自检规格：定调 / 响应式 / 动效 / 可访问性 / 反 AI 味清单
+│   └── preview.svg       点阵图预览插图
+├── tasks/                任务契约（含 TASK-001：JSON 导入导出）
+├── AGENTS.md             多 Agent 协作规则：代码约束、技术选型、分支与职责划分
+├── lessons.md            协作经验记录
 └── LICENSE
 ```
+
+> `README.md` 是**对外**说明；`docs/design-notes.md` 是**对内**的设计与自检规格，
+> 视觉 / 动效 / 响应式相关的改动请以后者为准，两者不重复维护。
 
 要改配色，基本只需要动 `styles/tokens.css`——所有颜色、间距、时长都是 CSS 变量，组件层没有一个硬编码色值。
 
