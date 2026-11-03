@@ -4,8 +4,8 @@
 > 未从源码确认的内容一律标注 `[待确认]`，不做推测性设计。
 > 发现文档与代码冲突时，以代码为准，并在 `lessons.md` 记录。
 
-**代码基线**：`index.html` 177 行 / `scripts/main.js` 523 行 / `styles/tokens.css` 120 行 /
-`styles/base.css` 109 行 / `styles/components.css` 724 行。（TASK-002 附链接之后）
+**代码基线**：`index.html` 180 行 / `scripts/main.js` 693 行 / `styles/tokens.css` 120 行 /
+`styles/base.css` 109 行 / `styles/components.css` 826 行。（TASK-003 分模块之后）
 
 ---
 
@@ -31,7 +31,7 @@
 | `styles/tokens.css` | 定义 `:root` 全部设计令牌：纸面色阶（`--paper` / `--paper-deep` / `--surface` / `--surface-2` / `--surface-sunk`）、墨色（`--ink` / `--ink-2` / `--ink-muted`）、线（`--rule` / `--rule-strong` / `--ledger`）、强调色（`--accent` / `--accent-deep` / `--accent-wash`）、点阵墨阶（`--dot-empty` / `--dot-1..4` / `--dot-done`，其中 `--dot-done: var(--accent)`）、焦点色、四组字体、字阶 `--fs-00..08` 与 `--fs-mega`、间距 `--sp-1..9`、圆角、三级阴影、动效时长与缓动、构成（`--gutter` / `--shell` / `--cell`）。**并包含 `[data-theme="dark"]` 的全部覆盖值。** |
 | `styles/base.css` | 盒模型重置、页面底色与字体、两个氛围层（`body::before` 渐变网格、`body::after` 点阵底纹 + mask 渐隐）、`.grain` 噪点层（内联 SVG turbulence，`mix-blend-mode` 在暗色下切 `screen`）、标题/段落/列表重置、`.num` 等宽数字、`:focus-visible` 全局焦点样式、`.sr-only`、`.reveal` 入场序列（含 `data-delay` 1/2/3 → 90/180/270ms）、`prefers-reduced-motion` 全局降级。 |
 | `styles/components.css` | `.shell` 外壳、`.masthead` 报头（含 `::after` 账本双红线，右侧留 14% 破格）、`.board` 主栅格（`1.62fr : 0.9fr`，`matrix` 跨列）、`.panel` 面板（含四角订线括号）、`.composer` 输入区、`.btn-add`、`.row` 台账行（等宽序号 + 戳印方框 + 朱红删线扫过 + `just-done` 盖章回弹 `stamp 620ms`）、`.empty` 空态、`.ticker` 计分条、`.meter` 进度条、`.stats` 统计格、`.matrix` 点阵图（`dotPop 520ms`，延迟 `var(--i) * 5ms`）、`.legend-*` 图例、`.btn-ghost`、`.footline` 页脚、`@media` 响应式（1080 / 720 / 380 / hover:none）。 |
-| `scripts/main.js` | 全部逻辑，单 IIFE。内含：常量、日期工具、链接工具（`safeLink`）、状态与持久化、DOM 引用表 `els`、四个渲染函数、行为函数、事件绑定、主题、入场、启动。详见下文各节。 |
+| `scripts/main.js` | 全部逻辑，单 IIFE。内含：常量、日期工具、链接工具（`safeLink`）、状态与持久化、模块工具、DOM 引用表 `els`、五个渲染函数（报头 / 模块栏 / 清单 / 计分条 / 点阵图）、行为函数、事件绑定、主题、入场、启动。详见下文各节。 |
 | `README.md` | **对外发布版**（187 行）：徽章 + GitHub Pages Demo 链接、「它解决什么问题」、「点阵图怎么读」、「特性」、「快速开始」（含 Python http.server 与 Nginx 部署片段）、「目录结构」、「设计说明」、「可访问性」、「数据存在哪儿」（**含控制台手工备份方案**）、「已知限制」、「贡献」、「License」。**面向 GitHub 访客与贡献者，非开发规格文档。** |
 | `docs/design-notes.md` | **内部设计与自检规格**（原为 2026-11-01 之前的根目录 `README.md`，116 行）。含：定调说明（Design Direction 决策表）、功能表、构成与响应式（三档断点）、动效规格表、可访问性自检、**反 AI 味清单自检**。视觉开发以此为准。 |
 | `docs/preview.svg` | README 中引用的点阵图预览插图（159 行 SVG），非运行时资源。 |
@@ -104,7 +104,9 @@
 | `deleteTask(id)` | 过滤移除；若当天无任务则 `delete state.days[selected]` → `save()` → 三个渲染 → `announce()` |
 | `selectDay(key)` | 切换选中日期 → 四个渲染；`min-width: 721px` 时才 `focus()` 输入框（避免触屏弹键盘） |
 | `seedDemo()` | 随机生成最近 64 天示例数据（周日大概率跳过），`save()` → 三个渲染（含 sweep）→ `announce()` |
-| `clearDoneBtn` | 清除当天已完成项；空则删除该天键；`confirm()` 未参与（直接执行，由按钮可见性控制） |
+| `addModule()` | `prompt` 取名字（≤6 字、不重名、上限 `MOD_MAX = 8`）→ 生成 id → `push` 到 `state.modules` → `save()` → 自动切到新模块 → 重渲染 + `announce()`；超限时只播报不弹窗 |
+| `removeModule(id)` | 仅对自定义模块生效。先遍历 `state.days` **统计**条数 → `confirm()`（文案带条数）→ 用户确认后才把任务的 `mod` 改为 `other` 并从 `modules` 移除 → `save()` → `activeMod` 回到 `all` → 重渲染。**取消时数据一个字节都不动** |
+| `clearDoneBtn` | 清除**当前模块视图内**的当天已完成项（「全部」视图下即当天全部，与过去一致）；空则删除该天键；`confirm()` 未参与（直接执行，由按钮可见性控制） |
 | `wipeBtn` | **`confirm()` 二次确认** → 重置 `state = { version: 1, days: {} }`、`selected = todayKey()` → `save()` → 四个渲染（含 sweep） |
 
 > 现状说明：清除已完成与清空全部记录对 `state.days` 的影响不同 —— 前者只删当前选中天，
@@ -124,12 +126,16 @@
 ```
 state = {
   version: 1,                       // 数字，当前固定为 1
+  modules: [                        // 【TASK-003 新增】可选；模块是全局配置，不按天存
+    { id: string, name: string }    // 缺失 / 空数组时回落预设三家：work 工作 / life 生活 / write 写作
+  ],
   days: {                           // 对象，key 为 'YYYY-MM-DD'
     'YYYY-MM-DD': {
       tasks: [                      // 数组
         {
           id:   string,             // 非空，文件内唯一
           text: string,             // 任务文本，非空，长度受输入框 maxlength=120 限制
+          mod:  string,             // 【TASK-003 新增】模块 id；缺失或指向已删除模块时归入内置模块 other
           link: string,             // 【TASK-002 新增】可选；规范化后的 http(s) 完整地址，无链接时不写该字段
           done: boolean,            // 完成状态
           at:   number              // 创建时间戳，Date.now()
@@ -140,6 +146,9 @@ state = {
 }
 ```
 
+**内置模块 `other`（「其他」）**：id 固定为 `other`，**不在 `modules` 数组里**，由 `modList()` 在渲染时拼到最后。
+它的职责是兜底——保证任何任务（含老数据、含模块被删后的孤儿任务）都一定出现在某个模块里，且自身不可删除。
+
 ### 5.2 各字段的生成来源（源码确认）
 
 | 字段 | 来源 | 生成规则 |
@@ -149,7 +158,8 @@ state = {
 | `id`（新增） | `main.js:296` | `'t' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)` |
 | `id`（示例） | `main.js:378` | `'d' + key.replace(/-/g, '') + i` |
 | `text` | `addTask` 参数 | 经 `trim()`；输入框 `maxlength="120"` |
-| `link` | `addTask` 第二参数（可选） | 经 `safeLink()`：无 `scheme://` 前缀补 `https://`，`new URL()` 解析且协议为 `http:` / `https:` 才保留；不通过时不写该字段（规范化函数 `safeLink` 在 `main.js:34-44`，写入点在 `addTask`，`main.js:325`） |
+| `link` | `addTask` 第二参数（可选） | 经 `safeLink()`：无 `scheme://` 前缀补 `https://`，`new URL()` 解析且协议为 `http:` / `https:` 才保留；不通过时不写该字段（规范化函数 `safeLink` 在 `main.js:40-49`，写入点在 `addTask`，`main.js:430`） |
+| `mod` | `addTask` 第三参数 | 必须是当前 `modules` 中存在的 id，否则落为 `other`（写入点 `addTask`，`main.js:430`）。**归属判定统一走 `modOf(task)`**（`main.js:78`）：`mod` 缺失或指向已删模块一律返回 `other` |
 | `done` | 新增时 `false` | 由 `toggleTask` 翻转 |
 | `at` | `Date.now()` | 毫秒时间戳 |
 
@@ -214,12 +224,20 @@ renderHeader()   ← selected
   └ 大日期数字 / 中文年月 / 星期 / 台账标题（今日台账 | 补记·X月X日 | 预先安排·X月X日）
     / 日期 key / 今天按钮禁用态 / 按日期 hash 稳定选取提示语（LEDES 5 条）
 
-renderList()     ← state.days[selected]
-  └ 无任务：隐藏 <ol>，显示空态；空态里的示例按钮仅在「全新用户」(Object.keys(state.days).length === 0) 时显示
-    有任务：隐藏空态，DocumentFragment 批量构建 <li class="row">（序号 / 戳印方框 / 文本 / 链接键（有链接时） / 删除键）
-  └ 更新计数 "done / total" 与「清除已完成」按钮可见性
+renderModOptions() ← state.modules（仅启动与增删模块后调用）
+  └ 填充 #modSelect 的 option（各模块 + 其他），保留当前选中值
 
-renderTicker()   ← state.days（全量）
+renderModBar()   ← state.modules + state.days[selected] + activeMod（由 renderList / renderListCounterOnly 尾部调用）
+  └ 「全部 / 各模块 / 其他」每个标签显示**当天**该模块的 完成/总数；停在自定义模块上时旁边挂删除键；末尾是「＋」
+
+renderList()     ← visibleTasks()（= state.days[selected] 按 activeMod 过滤）
+  └ 无任务：隐藏 <ol>，显示空态（标题带模块名，如「生活 · 这一天还没有落笔」）；
+    空态里的示例按钮仅在「全新用户」(Object.keys(state.days).length === 0) 时显示
+    有任务：隐藏空态，DocumentFragment 批量构建 <li class="row">
+            （序号 / 戳印方框 / 文本 / 模块小签（仅「全部」视图） / 链接键（有链接时） / 删除键）
+  └ 更新计数 "done / total" 与「清除已完成」按钮可见性，并刷新模块栏计数
+
+renderTicker()   ← state.days（全量，**不随 activeMod 变化**）
   └ 今日完成 done / total、进度条宽度、aria-label；连续完成天数（≥3 加 is-hot）；本周完成率；累计盖章
 
 renderMatrix(withSweep) ← state.days（全量）
@@ -268,7 +286,11 @@ renderMatrix(withSweep) ← state.days（全量）
 12. **无错误上报**：异常仅通过 `announce()` 做无障碍播报，用户可见性弱（`.sr-only`）。
 13. **无 TypeScript / JSDoc 类型约束**：数据结构仅靠文件头注释维护。
 14. **未监听 `storage` 事件**：多标签页同时打开会互相覆盖写入（仓库两处均未处理）。
-15. **CSS 中存在少量硬编码色值**：`components.css` 的 `.btn-add` 前景色 `#FFF8F2`、
+15. **模块不在导入校验范围内**：`state.modules` 是 TASK-003 新增字段，而 TASK-001 的导入校验
+    规则（R4–R13）只覆盖 `version` / `days` / `tasks`。导入不含 `modules` 的备份时会回落预设三家，
+    任务按其 `mod` 是否匹配归入对应模块或「其他」——不报错，但模块配置不会随备份恢复。
+    **待 TASK-001 实现时把 `modules` 纳入校验与归一化**。
+16. **CSS 中存在少量硬编码色值**：`components.css` 的 `.btn-add` 前景色 `#FFF8F2`、
     `.row__box::after` 勾线 `#FFF8F2`、`.empty__grid` 的 mask `#000` 未走令牌，
     不受 `tokens.css` 暗色覆盖影响（这三处颜色在明暗下均需保持，实际影响有限）。
     —— 注意这与远程 `README.md:107`「组件层没有一个硬编码色值」的表述**不符**。

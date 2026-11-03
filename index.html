@@ -67,6 +67,8 @@
         <button class="btn-ghost" id="clearDoneBtn" type="button" hidden>清除已完成</button>
       </div>
 
+      <div class="modbar" id="modBar" role="group" aria-label="按模块筛选任务"></div>
+
       <div class="composer">
         <div class="composer__row">
           <div class="composer__field">
@@ -78,6 +80,7 @@
           <button class="btn-add" id="addBtn" type="button">记上一笔</button>
         </div>
         <div class="composer__row composer__row--link">
+          <select class="composer__mod" id="modSelect" aria-label="新任务归入的模块"></select>
           <div class="composer__field composer__field--link">
             <span class="composer__mark" aria-hidden="true">↗</span>
             <input class="composer__input composer__input--link" id="linkInput" type="url" maxlength="500"
@@ -96,7 +99,7 @@
 
         <div class="empty" id="emptyState" hidden>
           <div class="empty__grid" aria-hidden="true"></div>
-          <p class="empty__title">这一天还没有落笔</p>
+          <p class="empty__title" id="emptyTitle">这一天还没有落笔</p>
           <p class="empty__desc">先写下第一件事。<br>写得出来，就做得完。</p>
           <button class="empty__seed" id="seedBtn" type="button" hidden>填入一段示例记录</button>
         </div>
