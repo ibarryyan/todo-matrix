@@ -212,6 +212,17 @@
 .composer__input::placeholder { color: var(--ink-muted); opacity: 0.85; }
 .composer__input:focus { outline: none; }
 
+/* 链接输入：比主栏矮一档，墨色更浅，视觉上属于同一张单据的下半行 */
+.composer__row--link { margin-top: var(--sp-2); }
+.composer__field--link { background: var(--surface-2); border-color: var(--rule); }
+.composer__field--link:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-wash); }
+.composer__input--link {
+  height: 40px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-01);
+  letter-spacing: 0;
+}
+
 .btn-add {
   flex: none;
   height: 52px;
@@ -255,7 +266,7 @@
 
 .row {
   display: grid;
-  grid-template-columns: 34px 1fr 44px;
+  grid-template-columns: 34px 1fr 44px 44px;
   align-items: center;
   gap: var(--sp-3);
   min-height: 56px;
@@ -346,7 +357,27 @@
 .row.is-done .row__text { color: var(--ink-muted); }
 .row.is-done .row__text::after { transform: scaleX(1); }
 
+/* 行内链接：新标签打开。列位固定，有没有链接都不挤动删除键的位置 */
+.row__link {
+  grid-column: 3;
+  width: 44px; height: 44px;
+  display: grid; place-items: center;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-2);
+  text-decoration: none;
+  cursor: pointer;
+  opacity: 0.5;
+  transition: opacity var(--dur-1) ease-out, color var(--dur-1) ease-out, background var(--dur-1) ease-out;
+}
+.row:hover .row__link, .row__link:focus-visible { opacity: 1; }
+.row__link:hover { color: var(--accent-deep); background: var(--accent-wash); }
+.row__link svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.7; }
+.row.is-done .row__link { color: var(--ink-muted); opacity: 0.35; }
+
 .row__del {
+  grid-column: 4;
   width: 44px; height: 44px;
   display: grid; place-items: center;
   background: transparent;
@@ -671,9 +702,10 @@
   .composer__hint { display: none; }
 
   .panel__head, .ledger, .ticker, .matrix { padding-inline: var(--sp-4); }
-  .row { grid-template-columns: 1fr 44px; gap: var(--sp-2); }
+  .row { grid-template-columns: 1fr 44px 44px; gap: var(--sp-2); }
   .row__idx { display: none; }         /* 小屏让位给文本 */
-  .row__del { opacity: 1; }            /* 触屏没有 hover，删除键常驻 */
+  .row__link { grid-column: 2; }       /* 序号隐藏后，链接与删除各占一格 */
+  .row__del { grid-column: 3; opacity: 1; }   /* 触屏没有 hover，删除键常驻 */
 
   .stats { grid-template-columns: 1fr 1fr; }
   .ticker__big { font-size: var(--fs-07); }
@@ -688,4 +720,5 @@
 
 @media (hover: none) {
   .row__del { opacity: 1; }
+  .row__link { opacity: 1; }           /* 触屏没有 hover，链接常驻可见 */
 }

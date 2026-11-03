@@ -1,6 +1,7 @@
 /* ============================================================
    点阵台账 · 逻辑层
-   数据模型：{ version, days: { 'YYYY-MM-DD': { tasks: [{id, text, done, at}] } } }
+   数据模型：{ version, days: { 'YYYY-MM-DD': { tasks: [{id, text, link?, done, at}] } } }
+   link 为可选字段（http/https 规范化后的完整地址），老数据没有该字段，读取时按「无链接」处理
    持久化：localStorage
    ============================================================ */
 (() => {
@@ -30,6 +31,21 @@
   /** 取当天所在周的周一 */
   const mondayOf = d => { const x = new Date(d); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); x.setHours(0, 0, 0, 0); return x; };
   const cnMonth = m => (m <= 10 ? CN_NUM[m] : '十' + CN_NUM[m - 10]) + '月';
+
+  /* ---------- 链接工具 ---------- */
+  /**
+   * 规范链接：缺协议时补 https://，只放行 http/https，其余一律判非法。
+   * 返回 null 表示不记录链接（非法或为空）。用于写入与渲染两处，避免脏数据拼出 javascript: 等危险协议。
+   */
+  function safeLink(raw) {
+    const v = (raw || '').trim();
+    if (!v) return null;
+    const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(v) ? v : 'https://' + v;
+    let u;
+    try { u = new URL(withScheme); } catch { return null; }
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+    return u.href;
+  }
 
   /* ---------- 状态 ---------- */
   let state = load() || { version: 1, days: {} };
@@ -64,7 +80,7 @@
     bigDay: $('bigDay'), bigYM: $('bigYM'), bigWd: $('bigWd'), lede: $('lede'),
     prevDay: $('prevDay'), nextDay: $('nextDay'), todayBtn: $('todayBtn'), themeBtn: $('themeBtn'),
     ledgerDayLabel: $('ledgerDayLabel'), ledgerDayKey: $('ledgerDayKey'), clearDoneBtn: $('clearDoneBtn'),
-    taskInput: $('taskInput'), addBtn: $('addBtn'), counter: $('counter'),
+    taskInput: $('taskInput'), linkInput: $('linkInput'), addBtn: $('addBtn'), counter: $('counter'),
     taskList: $('taskList'), emptyState: $('emptyState'), seedBtn: $('seedBtn'),
     tDone: $('tDone'), tTotal: $('tTotal'), tCap: $('tCap'),
     meterFill: $('meterFill'), meterWrap: $('meterWrap'),
@@ -124,6 +140,20 @@
     text.textContent = task.text;
 
     label.append(input, box, text);
+
+    // 附链接：只在校验通过后才渲染，href 一律用规范化后的地址
+    const href = safeLink(task.link);
+    if (href) {
+      const link = document.createElement('a');
+      link.className = 'row__link';
+      link.href = href;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.title = href;
+      link.setAttribute('aria-label', `在新标签打开链接：${href}`);
+      link.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 15.5L15.5 8.5M9.5 8.5H15.5V14.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+      li.append(link);
+    }
 
     const del = document.createElement('button');
     del.type = 'button';
@@ -289,17 +319,28 @@
   }
 
   /* ---------- 行为 ---------- */
-  function addTask(text) {
+  function addTask(text, linkRaw) {
     const v = text.trim();
     if (!v) return;
+    const link = safeLink(linkRaw);
+    const badLink = !!(linkRaw && linkRaw.trim()) && !link;   // 填了但没通过校验
     const day = dayOf(selected);
     const task = { id: 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), text: v, done: false, at: Date.now() };
+    if (link) task.link = link;
     day.tasks.push(task);
     save();
     renderList();
     renderTicker();
     renderMatrix(false);
-    announce(`已记录：${v}`);
+    announce(`已记录：${v}` + (badLink ? '（链接无效已忽略，需以 http 或 https 开头）' : link ? '（已附链接）' : ''));
+  }
+
+  /** 提交一条新任务：取两个输入框的值，成功后清空并回到任务输入 */
+  function submitComposer() {
+    addTask(els.taskInput.value, els.linkInput.value);
+    els.taskInput.value = '';
+    els.linkInput.value = '';
+    els.taskInput.focus();
   }
 
   function toggleTask(id) {
@@ -388,17 +429,13 @@
   }
 
   /* ---------- 事件 ---------- */
-  els.addBtn.addEventListener('click', () => {
-    addTask(els.taskInput.value);
-    els.taskInput.value = '';
-    els.taskInput.focus();
-  });
+  els.addBtn.addEventListener('click', submitComposer);
   els.taskInput.addEventListener('keydown', e => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      addTask(els.taskInput.value);
-      els.taskInput.value = '';
-    }
+    if (e.key === 'Enter') { e.preventDefault(); submitComposer(); }
+  });
+  els.linkInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); submitComposer(); }
+    if (e.key === 'Escape') { els.linkInput.value = ''; els.taskInput.focus(); }
   });
 
   els.taskList.addEventListener('change', e => {
