@@ -1,7 +1,8 @@
 /* ============================================================
    点阵台账 · 逻辑层
-   数据模型：{ version, days: { 'YYYY-MM-DD': { tasks: [{id, text, link?, done, at}] } } }
+   数据模型：{ version, modules: [{id, name}], days: { 'YYYY-MM-DD': { tasks: [{id, text, mod, link?, done, at}] } } }
    link 为可选字段（http/https 规范化后的完整地址），老数据没有该字段，读取时按「无链接」处理
+   老数据没有 modules / task.mod：modules 回落预设三家，无 mod 的任务归入内置模块「其他」
    持久化：localStorage
    ============================================================ */
 (() => {
@@ -13,6 +14,15 @@
   const CN_NUM = ['零','一','二','三','四','五','六','七','八','九','十'];
   const WEEK_CN = ['日','一','二','三','四','五','六'];
   const WD_LABEL = ['一','二','三','四','五','六','日'];
+
+  const MOD_PRESET = [                                 // 预设模块：老数据没有 modules 时用这套
+    { id: 'work',  name: '工作' },
+    { id: 'life',  name: '生活' },
+    { id: 'write', name: '写作' }
+  ];
+  const OTHER = { id: 'other', name: '其他' };         // 内置兜底模块：不可删除，任务被删模块后归入此处
+  const MOD_MAX = 8;                                   // 自定义模块上限
+  const ALL = 'all';                                   // 模块视图：全部
 
   const LEDES = [
     '今天打算做完哪几件事？先写下来，写完再开始。',
@@ -50,6 +60,7 @@
   /* ---------- 状态 ---------- */
   let state = load() || { version: 1, days: {} };
   let selected = todayKey();
+  let activeMod = ALL;                                 // 当前模块视图
 
   function load() {
     try {
@@ -74,6 +85,25 @@
   const countOf = k => { const d = peek(k); return d ? d.tasks.length : 0; };
   const doneOf = k => { const d = peek(k); return d ? d.tasks.filter(t => t.done).length : 0; };
 
+  /* ---------- 模块 ---------- */
+  /** 模块列表：老数据没有 modules 时补上预设三家（只在启动与写入前调用，不在渲染中改状态） */
+  function ensureModules() {
+    if (!Array.isArray(state.modules) || !state.modules.length) {
+      state.modules = MOD_PRESET.map(m => ({ id: m.id, name: m.name }));
+    }
+    return state.modules;
+  }
+  const modList = () => ensureModules().concat([OTHER]);
+  const modName = id => (ensureModules().find(m => m.id === id) || OTHER).name;
+  /** 任务所属模块：老数据没有 mod、或模块已被删除时，一律归入「其他」 */
+  const modOf = t => (t && ensureModules().some(m => m.id === t.mod)) ? t.mod : OTHER.id;
+  /** 当前视图（选中日期 + 选中模块）下可见的任务 */
+  function visibleTasks() {
+    const day = peek(selected);
+    const all = day ? day.tasks : [];
+    return activeMod === ALL ? all : all.filter(t => modOf(t) === activeMod);
+  }
+
   /* ---------- DOM ---------- */
   const $ = id => document.getElementById(id);
   const els = {
@@ -81,7 +111,8 @@
     prevDay: $('prevDay'), nextDay: $('nextDay'), todayBtn: $('todayBtn'), themeBtn: $('themeBtn'),
     ledgerDayLabel: $('ledgerDayLabel'), ledgerDayKey: $('ledgerDayKey'), clearDoneBtn: $('clearDoneBtn'),
     taskInput: $('taskInput'), linkInput: $('linkInput'), addBtn: $('addBtn'), counter: $('counter'),
-    taskList: $('taskList'), emptyState: $('emptyState'), seedBtn: $('seedBtn'),
+    modBar: $('modBar'), modSelect: $('modSelect'),
+    taskList: $('taskList'), emptyState: $('emptyState'), emptyTitle: $('emptyTitle'), seedBtn: $('seedBtn'),
     tDone: $('tDone'), tTotal: $('tTotal'), tCap: $('tCap'),
     meterFill: $('meterFill'), meterWrap: $('meterWrap'),
     sStreak: $('sStreak'), sWeek: $('sWeek'), sAll: $('sAll'),
@@ -110,8 +141,76 @@
     els.lede.textContent = LEDES[h % LEDES.length];
   }
 
+  /* ---------- 渲染：模块栏 ---------- */
+  /** 模块下拉（新任务归属）：保留当前选择，切了模块时由 renderModBar 同步 */
+  function renderModOptions() {
+    const list = modList();
+    const keep = els.modSelect.value;
+    els.modSelect.replaceChildren();
+    list.forEach(m => {
+      const o = document.createElement('option');
+      o.value = m.id;
+      o.textContent = m.name;
+      els.modSelect.appendChild(o);
+    });
+    els.modSelect.value = list.some(m => m.id === keep) ? keep : ensureModules()[0].id;
+  }
+
+  function renderModBar() {
+    const day = peek(selected);
+    const all = day ? day.tasks : [];
+    const tabs = [{ id: ALL, name: '全部' }].concat(modList());
+    els.modBar.replaceChildren();
+
+    tabs.forEach(t => {
+      const list = t.id === ALL ? all : all.filter(x => modOf(x) === t.id);
+      const done = list.filter(x => x.done).length;
+      const wrap = document.createElement('span');
+      wrap.className = 'mod-wrap';
+
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'mod' + (activeMod === t.id ? ' is-active' : '');
+      btn.dataset.mod = t.id;
+      btn.setAttribute('aria-pressed', String(activeMod === t.id));
+
+      const nm = document.createElement('span');
+      nm.className = 'mod__name';
+      nm.textContent = t.name;
+      const n = document.createElement('span');
+      n.className = 'mod__n num';
+      n.textContent = `${done}/${list.length}`;
+      btn.append(nm, n);
+      btn.setAttribute('aria-label', `${t.name}：${list.length} 项，完成 ${done} 项`);
+      wrap.appendChild(btn);
+
+      // 只有自定义模块、且正停在该模块上时才给删除键（「全部」「其他」不可删）
+      if (activeMod === t.id && t.id !== ALL && t.id !== OTHER.id) {
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'mod__del';
+        del.dataset.del = t.id;
+        del.setAttribute('aria-label', `删除模块：${t.name}`);
+        del.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke-linecap="round"/></svg>';
+        wrap.appendChild(del);
+      }
+      els.modBar.appendChild(wrap);
+    });
+
+    const add = document.createElement('button');
+    add.type = 'button';
+    add.className = 'mod mod--add';
+    add.id = 'addModBtn';
+    add.setAttribute('aria-label', '新增模块');
+    add.textContent = '＋';
+    els.modBar.appendChild(add);
+
+    // 停在某个模块上时，新任务默认归入该模块
+    if (activeMod !== ALL) els.modSelect.value = activeMod;
+  }
+
   /* ---------- 渲染：任务行 ---------- */
-  function rowEl(task, idx) {
+  function rowEl(task, idx, withMod) {
     const li = document.createElement('li');
     li.className = 'row' + (task.done ? ' is-done' : '');
     li.dataset.id = task.id;
@@ -141,6 +240,15 @@
 
     label.append(input, box, text);
 
+    // 「全部」视图下给任务打上模块小签，否则分不清属于哪一块
+    if (withMod) {
+      const tag = document.createElement('span');
+      tag.className = 'row__mod';
+      tag.textContent = modName(modOf(task));
+      label.classList.add('has-mod');
+      label.appendChild(tag);
+    }
+
     // 附链接：只在校验通过后才渲染，href 一律用规范化后的地址
     const href = safeLink(task.link);
     if (href) {
@@ -167,25 +275,26 @@
   }
 
   function renderList() {
-    const day = peek(selected);
-    const tasks = day ? day.tasks : [];
+    const tasks = visibleTasks();
     els.taskList.replaceChildren();
 
     if (!tasks.length) {
       els.taskList.hidden = true;
       els.emptyState.hidden = false;
+      els.emptyTitle.textContent = activeMod === ALL ? '这一天还没有落笔' : `${modName(activeMod)} · 这一天还没有落笔`;
       els.seedBtn.hidden = Object.keys(state.days).length > 0;   // 全新用户才给示例
     } else {
       els.emptyState.hidden = true;
       els.taskList.hidden = false;
       const frag = document.createDocumentFragment();
-      tasks.forEach((t, i) => frag.appendChild(rowEl(t, i)));
+      tasks.forEach((t, i) => frag.appendChild(rowEl(t, i, activeMod === ALL)));
       els.taskList.appendChild(frag);
     }
 
     const done = tasks.filter(t => t.done).length;
     els.counter.textContent = `${done} / ${tasks.length}`;
     els.clearDoneBtn.hidden = done === 0;
+    renderModBar();                                              // 模块计数跟着变
   }
 
   /* ---------- 渲染：计分条 ---------- */
@@ -319,28 +428,71 @@
   }
 
   /* ---------- 行为 ---------- */
-  function addTask(text, linkRaw) {
+  function addTask(text, linkRaw, modRaw) {
     const v = text.trim();
     if (!v) return;
     const link = safeLink(linkRaw);
     const badLink = !!(linkRaw && linkRaw.trim()) && !link;   // 填了但没通过校验
+    const mod = ensureModules().some(m => m.id === modRaw) ? modRaw : OTHER.id;
     const day = dayOf(selected);
-    const task = { id: 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), text: v, done: false, at: Date.now() };
+    const task = { id: 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), text: v, mod, done: false, at: Date.now() };
     if (link) task.link = link;
     day.tasks.push(task);
     save();
     renderList();
     renderTicker();
     renderMatrix(false);
-    announce(`已记录：${v}` + (badLink ? '（链接无效已忽略，需以 http 或 https 开头）' : link ? '（已附链接）' : ''));
+    announce(`已记录到「${modName(mod)}」：${v}` + (badLink ? '（链接无效已忽略，需以 http 或 https 开头）' : link ? '（已附链接）' : ''));
   }
 
-  /** 提交一条新任务：取两个输入框的值，成功后清空并回到任务输入 */
+  /** 提交一条新任务：取两个输入框与模块下拉的值，成功后清空并回到任务输入 */
   function submitComposer() {
-    addTask(els.taskInput.value, els.linkInput.value);
+    addTask(els.taskInput.value, els.linkInput.value, els.modSelect.value);
     els.taskInput.value = '';
     els.linkInput.value = '';
     els.taskInput.focus();
+  }
+
+  /* ---------- 模块：新增 / 删除 ---------- */
+  function addModule() {
+    if (ensureModules().length >= MOD_MAX) { announce(`模块最多 ${MOD_MAX} 个`); return; }
+    const name = (prompt('新模块名称（最多 6 个字）') || '').trim();
+    if (!name) return;
+    if (name.length > 6) { announce('模块名称最多 6 个字'); return; }
+    if (name === OTHER.name || modList().some(m => m.name === name)) { announce('已有同名模块'); return; }
+    const id = 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 4);
+    state.modules.push({ id, name });
+    save();
+    activeMod = id;
+    renderModOptions();
+    renderList();
+    announce(`已新增模块：${name}`);
+  }
+
+  function removeModule(id) {
+    const list = ensureModules();
+    const idx = list.findIndex(m => m.id === id);
+    if (idx < 0) return;
+    // 先数、再确认、确认后才改数据：取消时一个字都不动
+    let n = 0;
+    const each = fn => {
+      for (const k in state.days) {
+        const tasks = state.days[k] && Array.isArray(state.days[k].tasks) ? state.days[k].tasks : [];
+        tasks.forEach(fn);
+      }
+    };
+    each(t => { if (t.mod === id) n++; });
+    const ok = confirm(n
+      ? `模块「${list[idx].name}」下有 ${n} 条任务，删除后它们会归入「${OTHER.name}」。确定删除？`
+      : `确定删除模块「${list[idx].name}」？`);
+    if (!ok) return;
+    each(t => { if (t.mod === id) t.mod = OTHER.id; });
+    list.splice(idx, 1);
+    save();
+    activeMod = ALL;
+    renderModOptions();
+    renderList(); renderTicker(); renderMatrix(false);
+    announce(n ? `已删除模块，${n} 条任务归入「${OTHER.name}」` : '已删除模块');
   }
 
   function toggleTask(id) {
@@ -369,11 +521,11 @@
   }
 
   function renderListCounterOnly() {
-    const day = peek(selected);
-    const tasks = day ? day.tasks : [];
+    const tasks = visibleTasks();
     const done = tasks.filter(t => t.done).length;
     els.counter.textContent = `${done} / ${tasks.length}`;
     els.clearDoneBtn.hidden = done === 0;
+    renderModBar();                                              // 模块计数跟着变
   }
 
   function deleteTask(id) {
@@ -418,6 +570,7 @@
         day.tasks.push({
           id: 'd' + key.replace(/-/g, '') + i,
           text,
+          mod: ensureModules()[Math.floor(Math.random() * ensureModules().length)].id,
           done: Math.random() < p,
           at: Date.now()
         });
@@ -450,11 +603,27 @@
   els.clearDoneBtn.addEventListener('click', () => {
     const day = peek(selected);
     if (!day) return;
-    const n = day.tasks.filter(t => t.done).length;
-    day.tasks = day.tasks.filter(t => !t.done);
+    // 只清当前模块视图里的已完成项；「全部」视图下行为与过去一致
+    const hit = t => t.done && (activeMod === ALL || modOf(t) === activeMod);
+    const n = day.tasks.filter(hit).length;
+    day.tasks = day.tasks.filter(t => !hit(t));
     if (!day.tasks.length) delete state.days[selected];
     save(); renderList(); renderTicker(); renderMatrix(false);
-    announce(`已清除 ${n} 条已完成任务`);
+    announce(activeMod === ALL ? `已清除 ${n} 条已完成任务` : `已清除「${modName(activeMod)}」下 ${n} 条已完成任务`);
+  });
+
+  els.modBar.addEventListener('click', e => {
+    if (e.target.closest('#addModBtn')) { addModule(); return; }
+    const del = e.target.closest('[data-del]');
+    if (del) { removeModule(del.dataset.del); return; }
+    const tab = e.target.closest('[data-mod]');
+    if (!tab) return;
+    const id = tab.dataset.mod;
+    if (id === activeMod) return;
+    activeMod = id;
+    renderList();
+    if (window.matchMedia('(min-width: 721px)').matches) els.taskInput.focus({ preventScroll: true });
+    announce(id === ALL ? '已切换到全部任务' : `已切换到模块：${modName(id)}`);
   });
 
   els.matrixGrid.addEventListener('click', e => {
@@ -475,7 +644,7 @@
 
   els.wipeBtn.addEventListener('click', () => {
     if (!confirm('确定清空全部记录？此操作不可撤销。')) return;
-    state = { version: 1, days: {} };
+    state = { version: 1, days: {}, modules: ensureModules() };   // 模块是配置不是记录，清空时保留
     selected = todayKey();
     save(); renderHeader(); renderList(); renderTicker(); renderMatrix(true);
     announce('已清空全部记录');
@@ -505,6 +674,8 @@
   }
 
   /* ---------- 启动 ---------- */
+  ensureModules();
+  renderModOptions();
   renderHeader();
   renderList();
   renderTicker();
