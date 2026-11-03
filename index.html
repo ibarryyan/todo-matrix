@@ -77,8 +77,16 @@
           </div>
           <button class="btn-add" id="addBtn" type="button">记上一笔</button>
         </div>
+        <div class="composer__row composer__row--link">
+          <div class="composer__field composer__field--link">
+            <span class="composer__mark" aria-hidden="true">↗</span>
+            <input class="composer__input composer__input--link" id="linkInput" type="url" maxlength="500"
+                   placeholder="附一条链接（可选）…" autocomplete="off" spellcheck="false"
+                   aria-label="新任务附带的链接，可选，需以 http 或 https 开头">
+          </div>
+        </div>
         <p class="composer__hint">
-          <span>按 <kbd>Enter</kbd> 快速记录 · 点方框盖章完成</span>
+          <span>按 <kbd>Enter</kbd> 快速记录 · 点方框盖章完成 · 只认 http(s) 链接</span>
           <span class="num" id="counter">0 / 0</span>
         </p>
       </div>

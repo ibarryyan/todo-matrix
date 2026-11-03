@@ -28,6 +28,30 @@
 
 ## 记录
 
+## 2026-11-03 · 给台账行加按钮时，栅格列位必须显式固定
+
+- **问题**：TASK-002 给 `.row` 增加链接按钮后，行栅格从 `34px 1fr 44px` 变成 `34px 1fr 44px 44px`。
+  若只靠「先 append 链接、再 append 删除键」的顺序，没有链接的行会把删除键顶到第 3 列，
+  与有链接的行**左右错位**（`styles/components.css:256` / `.row__del`）。
+- **原因**：`display: grid` 下子项按 DOM 顺序自动排布，DOM 结构不同（有没有链接）就会占据不同列。
+- **解决方案**：给两个按钮显式写死列位 —— `.row__link { grid-column: 3 }`、`.row__del { grid-column: 4 }`；
+  ≤720px 断点同步改为 `1fr 44px 44px` 并把列位调成 2 / 3。删链接时列位也不会乱。
+- **后续改进建议**：以后往 `.row` / 任何 grid 行里增删子元素，**先给它显式 `grid-column`**，
+  不要依赖 DOM 顺序；改完在同一天里混合「有 / 无该元素」的行，目测一次对齐。
+
+## 2026-11-03 · 无头浏览器自测必须走本地 HTTP，不能用 file://
+
+- **问题**：用 `Chrome --headless=new --dump-dom` 加载 `file:///...index.html` 时，
+  外挂的测试脚本（`driver.html`）完全没有执行，`document.title` / 属性标记都拿不到；
+  改成本地 `python3 -m http.server` 后立刻正常。
+- **原因**：`file://` 下 origin 是 opaque，`localStorage` 访问受限，且以 `.html` 作 `<script src>` 的
+  加载行为不可靠；本项目首屏就依赖 `localStorage`，自测结论会失真。
+- **解决方案**：`cp -r` 一份到 `/tmp`，`python3 -m http.server` 起服务后用
+  `--headless=new --virtual-time-budget=4000 --dump-dom http://127.0.0.1:PORT/` 取结果，
+  测试脚本**内联**进 HTML；大段输出改用 `document.title` 回传（属性值里的 JSON 引号会被转义，grep 难取）。
+- **后续改进建议**：本项目没有测试框架，任何需要「真实 DOM + localStorage」的验证都按这个套路来；
+  纯函数（如 `safeLink`）单独用 `node -e` 做输入表驱动测试，两者互补。
+
 ## 2026-11-01 · 接入 GitHub 远程时本地 README 与远程版内容冲突
 
 - **问题**：本地 `README.md`（116 行，内部设计版：定调说明 / 构成与响应式 / 动效规格 /
