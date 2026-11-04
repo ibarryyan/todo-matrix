@@ -762,10 +762,22 @@
   letter-spacing: 0.16em;
   color: var(--ink-muted);
 }
+/* 链接式按钮：上下补 --sp-3、再用负 margin 抵消 —— 视觉仍是普通文字链接，
+   可点区域 20 + 12×2 = 44px；取 12 而非 16 是为了窄屏换行时刚好不侵入上一行 */
 .footline button {
-  background: none; border: 0; padding: 0;
+  background: none; border: 0;
+  padding: var(--sp-3) 0;
+  margin-block: calc(var(--sp-3) * -1);
   font: inherit; color: var(--accent-deep);
   cursor: pointer; text-decoration: underline; text-underline-offset: 3px;
+}
+
+/* 数据管理动作组：导出 / 导入 / 清空 三个链接式按钮同组 */
+.footline__acts {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3) var(--sp-5);
 }
 
 /* ============================================================

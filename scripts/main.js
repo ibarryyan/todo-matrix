@@ -117,6 +117,7 @@
     meterFill: $('meterFill'), meterWrap: $('meterWrap'),
     sStreak: $('sStreak'), sWeek: $('sWeek'), sAll: $('sAll'),
     matrixGrid: $('matrixGrid'), matrixScroll: $('matrixScroll'), genBtn: $('genBtn'),
+    exportBtn: $('exportBtn'), importBtn: $('importBtn'), importFile: $('importFile'),
     wipeBtn: $('wipeBtn'), live: $('live')
   };
 
@@ -581,7 +582,138 @@
     announce('已填入一段示例记录，点阵图已生成');
   }
 
-  /* ---------- 事件 ---------- */
+  /* ---------- 备份：导出 / 导入 ---------- */
+  const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+  const isPlainObject = v => !!v && typeof v === 'object' && !Array.isArray(v);
+
+  /** 导出全部数据（含全部历史 / 未来日期与模块配置）为 JSON 文件，文件名带当天日期 */
+  function exportData() {
+    try {
+      ensureModules();                                   // 老数据没有 modules 时补上预设，保证导出结构完整
+      const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `dotledger-backup-${todayKey()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);  // 等下载启动后再释放
+      const n = Object.keys(state.days).length;
+      announce(n ? `已导出 ${n} 天的备份` : '已导出备份（当前没有记录）');
+    } catch {
+      announce('导出失败，请重试');
+    }
+  }
+
+  /**
+   * 校验备份文件结构：任何一项不过就整体拒绝（fail-fast）。
+   * 返回 null 表示通过；返回 string 为拒绝原因（直接进播报）。
+   * 覆盖 modules / mod / link 三个后增字段：前两者严格校验，link 只查类型与长度，
+   * 协议合法性交给 normalizeBackup 里的 safeLink（与本机写入同一把尺子）。
+   */
+  function validateBackup(data) {
+    if (!isPlainObject(data)) return '文件根节点不是对象';
+    if (data.version !== 1) return '数据版本不受支持（当前支持 1）';
+    if (!isPlainObject(data.days)) return 'days 必须是对象';
+
+    if (data.modules !== undefined) {                     // modules 可缺省（老备份），出现就必须是合法模块表
+      if (!Array.isArray(data.modules) || !data.modules.length) return 'modules 必须是非空数组';
+      if (data.modules.length > MOD_MAX) return `模块最多 ${MOD_MAX} 个`;
+      const ids = new Set(), names = new Set();
+      for (const m of data.modules) {
+        if (!isPlainObject(m)) return '模块结构非法';
+        if (typeof m.id !== 'string' || !m.id.trim()) return '模块 id 非法';
+        if (typeof m.name !== 'string' || !m.name.trim() || m.name.trim().length > 6) return '模块名称为空或超过 6 个字';
+        if (m.id === OTHER.id || m.id === ALL) return `模块 id 占用保留字：${m.id}`;
+        if (m.name.trim() === OTHER.name) return `模块不能叫「${OTHER.name}」`;
+        if (ids.has(m.id)) return `模块 id 重复：${m.id}`;
+        if (names.has(m.name.trim())) return `模块名称重复：${m.name.trim()}`;
+        ids.add(m.id); names.add(m.name.trim());
+      }
+    }
+
+    const seen = new Set();
+    for (const k in data.days) {
+      if (!DATE_RE.test(k)) return `日期键格式错误：${k}`;
+      if (keyOf(parseKey(k)) !== k) return `日期不存在：${k}`;    // 排除 2026-02-30 / 2026-13-01
+      const day = data.days[k];
+      if (!isPlainObject(day) || !Array.isArray(day.tasks)) return `${k} 的数据结构非法`;
+      if (!day.tasks.length) return `${k} 是没有任务的空日期`;
+      for (const t of day.tasks) {
+        if (!isPlainObject(t)) return `${k} 存在非法任务`;
+        if (typeof t.id !== 'string' || !t.id.trim()) return `任务 id 非法：${JSON.stringify(t.id)}`;
+        if (seen.has(t.id)) return `任务 id 重复：${t.id}`;
+        seen.add(t.id);
+        if (typeof t.text !== 'string' || !t.text.trim()) return `任务文本为空（id: ${t.id}）`;
+        if (t.text.trim().length > 120) return `任务文本超过 120 字（id: ${t.id}）`;
+        if (typeof t.done !== 'boolean') return `完成状态字段类型非法（id: ${t.id}）`;
+        if (typeof t.at !== 'number' || !Number.isFinite(t.at)) return `时间戳字段非法（id: ${t.id}）`;
+        if (t.mod !== undefined && (typeof t.mod !== 'string' || !t.mod)) return `模块归属字段非法（id: ${t.id}）`;
+        if (t.link !== undefined && (typeof t.link !== 'string' || !t.link.trim() || t.link.length > 500)) return `链接字段非法（id: ${t.id}）`;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * 归一化：只保留已知字段、构造全新对象再写入，未知字段一律丢弃。
+   * mod 缺省归「其他」（与本机读取老数据的行为一致）；link 经 safeLink 复检，
+   * 协议不合法的链接丢弃但保留任务本身。
+   */
+  function normalizeBackup(data) {
+    const modules = (Array.isArray(data.modules) && data.modules.length)
+      ? data.modules.map(m => ({ id: m.id, name: m.name.trim() }))
+      : MOD_PRESET.map(m => ({ id: m.id, name: m.name }));
+    const days = {};
+    for (const k in data.days) {
+      days[k] = {
+        tasks: data.days[k].tasks.map(t => {
+          const task = { id: t.id, text: t.text.trim(), done: t.done, at: t.at };
+          task.mod = (typeof t.mod === 'string' && t.mod) ? t.mod : OTHER.id;
+          const href = safeLink(t.link);
+          if (href) task.link = href;
+          return task;
+        })
+      };
+    }
+    return { version: 1, modules, days };
+  }
+
+  /** 导入备份文件：校验 → 确认 → 先写盘 → 写盘成功后才换内存 → 重渲染 */
+  async function importBackup(file) {
+    if (!file) return;                                   // 没选文件（对话框取消）：静默返回
+    if (!file.size) { announce('文件是空的，导入已取消'); return; }
+    let data;
+    try {
+      data = JSON.parse(await file.text());
+    } catch {
+      announce('文件不是合法 JSON，导入已取消');
+      return;
+    }
+    const err = validateBackup(data);
+    if (err) { announce(`导入已取消：${err}`); return; }
+
+    const next = normalizeBackup(data);
+    const nDays = Object.keys(next.days).length;
+    let nTasks = 0;
+    for (const k in next.days) nTasks += next.days[k].tasks.length;
+    const ok = confirm(`将导入 ${nDays} 天、共 ${nTasks} 条任务、${next.modules.length} 个模块。\n\n当前全部记录会被整体替换，且不可撤销。确定继续？`);
+    if (!ok) { announce('已取消导入'); return; }
+
+    try {
+      localStorage.setItem(STORE_KEY, JSON.stringify(next));   // 写入优先：先落盘
+    } catch {
+      announce('本地存储写入失败，原有数据保持不变');
+      return;
+    }
+    state = next;                                              // 落盘成功后才动内存
+    selected = todayKey();
+    activeMod = ALL;
+    renderModOptions(); renderHeader(); renderList(); renderTicker(); renderMatrix(true);
+    announce(`已导入 ${nDays} 天、${nTasks} 条记录、${next.modules.length} 个模块`);
+  }
+
   els.addBtn.addEventListener('click', submitComposer);
   els.taskInput.addEventListener('keydown', e => {
     if (e.key === 'Enter') { e.preventDefault(); submitComposer(); }
@@ -634,6 +766,13 @@
   els.genBtn.addEventListener('click', () => {
     renderMatrix(true);
     announce('点阵图已重新生成');
+  });
+
+  els.exportBtn.addEventListener('click', exportData);
+  els.importBtn.addEventListener('click', () => els.importFile.click());
+  els.importFile.addEventListener('change', async () => {
+    await importBackup(els.importFile.files[0]);
+    els.importFile.value = '';                          // 清掉选择，同一文件可重复导入
   });
 
   els.seedBtn.addEventListener('click', seedDemo);
