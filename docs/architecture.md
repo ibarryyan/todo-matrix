@@ -4,8 +4,8 @@
 > 未从源码确认的内容一律标注 `[待确认]`，不做推测性设计。
 > 发现文档与代码冲突时，以代码为准，并在 `lessons.md` 记录。
 
-**代码基线**：`index.html` 180 行 / `scripts/main.js` 693 行 / `styles/tokens.css` 120 行 /
-`styles/base.css` 109 行 / `styles/components.css` 826 行。（TASK-003 分模块之后）
+**代码基线**：`index.html` 185 行 / `scripts/main.js` 832 行 / `styles/tokens.css` 120 行 /
+`styles/base.css` 109 行 / `styles/components.css` 838 行。（TASK-001 导入导出之后）
 
 ---
 
@@ -118,6 +118,26 @@
 - `els.taskList` 上监听 `change`（勾选框）与 `click`（删除按钮），用 `closest()` 定位目标。
 - `els.matrixGrid` 上监听 `click`，用 `closest('.cell')` 定位日期格。
 - 其余按钮直接绑定在各自元素上。
+
+### 4.5 备份：导出 / 导入（TASK-001，`main.js` 备份分节）
+
+| 函数 | 行为 |
+|---|---|
+| `exportData()` | `ensureModules()` 补齐模块 → `JSON.stringify(state, null, 2)` → `Blob` → `URL.createObjectURL` → 触发 `<a download="dotledger-backup-YYYY-MM-DD.json">` → 1s 后 `revokeObjectURL`。导出的就是**整个 `state`**（全部日期 + `modules`），不加任何包装字段 |
+| `validateBackup(data)` | fail-fast，返回 `null`（通过）或一句中文原因。依次校验：根对象 → `version === 1` → `days` 是普通对象 → 可选的 `modules`（非空数组、≤`MOD_MAX`、id 唯一且不占 `all`/`other`、名称非空 ≤6 字不重名不叫「其他」）→ 每个日期键格式与真实性（`keyOf(parseKey(k)) === k`）→ `tasks` 非空数组 → 每个任务的 `id` 唯一非空、`text` ≤120、`done` 布尔、`at` 有限数字、可选的 `mod` / `link` 类型与长度 |
+| `normalizeBackup(data)` | 丢弃未知字段、重建新对象：`modules` 缺省回落预设三家；任务只留 `{id, text, mod, done, at, link?}`；`mod` 缺省补 `other`；`link` 用与手工录入**同一个** `safeLink()` 复检，非法协议只丢链接、保留任务 |
+| `importBackup(file)` | `file.text()` → `JSON.parse` → `validateBackup` → `confirm`（写明天数 / 条数 / 模块数与「整体替换、不可撤销」）→ `localStorage.setItem` **成功后**才赋 `state` → `selected` 重置今天、`activeMod` 重置 `all` → `renderModOptions` / `renderHeader` / `renderList` / `renderTicker` / `renderMatrix(true)` → `announce` |
+
+要点：
+- **写入优先**：这是全项目唯一「先落盘、再换内存」的流程（`save()` 仍是先改内存后落盘，见 6.3）。
+  写盘失败时内存与磁盘都保持原样。
+- **文件选择框清空**：`change` 处理完后把 `input.value` 置空，同一文件可连续导入，且不依赖文件名去重。
+- **`link` 的判定只有一把尺子**：校验阶段只查类型与长度，协议交给 `safeLink()`，避免「手输能进、导入被拒」。
+- **`modules` 可选**：TASK-003 之前的备份没有该字段，导入后补预设三家、任务归「其他」，与手工升级路径一致。
+
+### 4.6 事件绑定方式（续：备份）
+
+`#exportBtn` / `#importBtn` / `#importFile` 均为直接绑定：前两者是 `click`，`#importFile` 是 `change`。
 
 ## 5. 数据结构
 
@@ -274,6 +294,7 @@ renderMatrix(withSweep) ← state.days（全量）
 3. **无数据版本迁移**：`version` 字段存在但**从未被校验或使用**。
 4. **`load()` 校验极弱**：见 6.2 —— 这是导入功能必须自行补齐严格校验的直接原因。
 5. **存储失败不回滚**：`save()` 失败只 `announce`，内存与磁盘可能长期不一致（见 6.3）。
+   **例外**：`importBackup()` 是唯一「先落盘、后换内存」的流程（4.5）。
 6. **未检测存储配额**：未对 `days` 规模或 `localStorage` 剩余容量做任何上限判断。
 7. **单设备、单浏览器**：无账号、无同步；**未监听 `storage` 事件**，多标签页同时打开会互相覆盖。
 8. **依赖本地时区**：所有日期键基于 `new Date()` 的本地时区；跨时区或系统时间变更会导致记录错位。
@@ -286,10 +307,8 @@ renderMatrix(withSweep) ← state.days（全量）
 12. **无错误上报**：异常仅通过 `announce()` 做无障碍播报，用户可见性弱（`.sr-only`）。
 13. **无 TypeScript / JSDoc 类型约束**：数据结构仅靠文件头注释维护。
 14. **未监听 `storage` 事件**：多标签页同时打开会互相覆盖写入（仓库两处均未处理）。
-15. **模块不在导入校验范围内**：`state.modules` 是 TASK-003 新增字段，而 TASK-001 的导入校验
-    规则（R4–R13）只覆盖 `version` / `days` / `tasks`。导入不含 `modules` 的备份时会回落预设三家，
-    任务按其 `mod` 是否匹配归入对应模块或「其他」——不报错，但模块配置不会随备份恢复。
-    **待 TASK-001 实现时把 `modules` 纳入校验与归一化**。
+15. **`modules` / `mod` / `link` 已纳入导入范围**（TASK-001 已解决）：校验规则见 4.5 与
+    `tasks/TASK-001.md` 的 R14–R17。缺 `modules` 的老备份回落预设三家，任务按 `mod` 归入对应模块或「其他」。
 16. **CSS 中存在少量硬编码色值**：`components.css` 的 `.btn-add` 前景色 `#FFF8F2`、
     `.row__box::after` 勾线 `#FFF8F2`、`.empty__grid` 的 mask `#000` 未走令牌，
     不受 `tokens.css` 暗色覆盖影响（这三处颜色在明暗下均需保持，实际影响有限）。
@@ -320,7 +339,7 @@ renderMatrix(withSweep) ← state.days（全量）
 | 1 | L165 「依赖 Google Fonts CDN；加载失败时回退到 PingFang SC / Songti SC」 | 与 `index.html:10-12` 及 `tokens.css` 字体栈一致 | ✅ 准确（远程版已修正本地旧版的「不联网」错误表述） |
 | 2 | L107 「组件层没有一个硬编码色值」 | `components.css` 存在 `#FFF8F2` ×2、mask `#000` ×1 | ❌ **不符**，已记录于限制 15，修正待确认 |
 | 3 | L121 「页面入场（4 组错峰 90ms）」 | 4 个 `.reveal` 元素，`data-delay` 三档 90/180/270ms；但 `base.css:86` 注释写「3 组」 | ⚠️ 注释与文档轻微不一致，行为无影响 |
-| 4 | L148–155 「手动备份，在浏览器控制台执行 `copy(localStorage.getItem('dotledger.v1'))`」 | 当前确实无导出 UI | ✅ 准确，但**是 TASK-001 要消除的痛点**；实现后须同步更新此段与 L164「没有数据导出按钮」 |
+| 4 | L148–155 「手动备份，在浏览器控制台执行 `copy(localStorage.getItem('dotledger.v1'))`」 | 已于 2026-11-04 改为页脚「导出备份 / 导入备份」按钮（TASK-001）；L164「没有数据导出按钮」一条已删除 | ✅ 已修正 |
 | 5 | L103 「`main.js` 约 18KB」 | 实际 18,346 字节 ≈ 17.9KB | ✅ 准确 |
 | 6 | L166 「点阵图回溯 18 周，更早的记录不会显示」 | `WEEKS = 18`；更早数据仍在 `state.days` 中只是不渲染 | ✅ 准确 |
 | 7 | L93–109 目录结构 | 原未列出 `docs/preview.svg`；2026-11-01 已在提交 `5c6f807` 中补全 `docs/`、`tasks/`、`AGENTS.md`、`lessons.md`，并加注「对外 README vs 对内 design-notes」的分工说明 | ✅ 已修正 |

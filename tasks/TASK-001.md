@@ -1,6 +1,6 @@
 # TASK-001 · 为 todo-matrix 增加 JSON 数据导入与导出功能
 
-- **状态**：待开发（未开始实现）
+- **状态**：已实现（`feature/TASK-001-json-import-export`，待 Review / 待用户决定合并）
 - **优先级**：P1
 - **关联文档**：[`../AGENTS.md`](../AGENTS.md)、[`../docs/architecture.md`](../docs/architecture.md)
 - **数据结构基线**：`scripts/main.js` 顶部注释与 `load()` / `save()` 实现（**不得擅自设计新格式**）
@@ -70,21 +70,35 @@
 
 ## 4. 数据格式
 
+### 1.1 契约修订（2026-11-04）
+
+本契约写于 TASK-002（待办附链接）与 TASK-003（任务分模块）之前，数据结构已扩充。实现时按**当前代码**
+把三个后增字段纳入校验与导出范围，否则备份会丢模块、也会漏掉链接：
+
+- `state.modules` —— 模块配置（`[{id, name}]`，缺省时导出补预设三家）
+- `task.mod` —— 任务归属模块 id
+- `task.link` —— 任务附带的 http(s) 链接
+
 ### 4.1 顶层结构（与 `main.js` 内存 `state` 完全一致）
 
 ```json
 {
   "version": 1,
+  "modules": [
+    { "id": "work",  "name": "工作" },
+    { "id": "life",  "name": "生活" },
+    { "id": "write", "name": "写作" }
+  ],
   "days": {
     "2026-10-27": {
       "tasks": [
-        { "id": "tm9x2ka1b", "text": "整理会议纪要", "done": false, "at": 1761475200000 },
-        { "id": "tm9x2kc7f", "text": "修复 WebSocket 断连", "done": true,  "at": 1761475231000 }
+        { "id": "tm9x2ka1b", "text": "整理会议纪要", "mod": "work", "done": false, "at": 1761475200000 },
+        { "id": "tm9x2kc7f", "text": "修复 WebSocket 断连", "mod": "work", "link": "https://example.com/issue/42", "done": true, "at": 1761475231000 }
       ]
     },
     "2026-11-03": {
       "tasks": [
-        { "id": "tm9y1qq0z", "text": "预排下周评审", "done": false, "at": 1762080000000 }
+        { "id": "tm9y1qq0z", "text": "预排下周评审", "mod": "life", "done": false, "at": 1762080000000 }
       ]
     }
   }
@@ -96,6 +110,7 @@
 | 字段 | 类型 | 必填 | 规则 |
 |---|---|---|---|
 | `version` | `number` | ✅ | 必须严格等于 `1`（当前唯一受支持版本） |
+| `modules` | `array` | ⭕ | **可选**（老备份没有该字段）。出现时必须是非空数组、≤8 项；`id` 非空且唯一、不占用保留字 `all` / `other`；`name` 去空格后非空、≤6 字、互不重复、不叫「其他」 |
 | `days` | `object` | ✅ | 普通对象；**不得为 `null`、数组或其他类型** |
 | `days` 的键 | `string` | ✅ | 必须匹配 `^\d{4}-\d{2}-\d{2}$`，且为**真实存在的日期**（回环校验 `keyOf(parseKey(k)) === k`，用于排除 `2026-02-30`、`2026-13-01` 等） |
 | `days[v]` | `object` | ✅ | 普通对象，当前只识别 `tasks` 一个键 |
@@ -105,6 +120,8 @@
 | `task.text` | `string` | ✅ | `trim()` 后非空；长度 ≤ 120（与 `index.html` 的 `maxlength="120"` 一致） |
 | `task.done` | `boolean` | ✅ | 必须是 `true` / `false`，不接受 `"true"` / `1` / `0` 等 |
 | `task.at` | `number` | ✅ | 必须是有限数字（`Number.isFinite`），毫秒时间戳 |
+| `task.mod` | `string` | ⭕ | 可选；出现时必须是非空字符串。缺省或指向已删模块时按「其他」处理 |
+| `task.link` | `string` | ⭕ | 可选；出现时必须是非空字符串且 ≤500 字符。协议合法性在归一化阶段用 `safeLink()` 复检，**不合法只丢链接、保留任务** |
 
 ### 4.3 导出文件
 
@@ -136,12 +153,17 @@
 | R11 | 每个 `task.text` 是字符串，`trim()` 后非空且长度 ≤ 120 | 任务文本为空或超长 |
 | R12 | 每个 `task.done` 是 `boolean` | 完成状态字段类型非法 |
 | R13 | 每个 `task.at` 是有限数字 | 时间戳字段非法 |
+| R14 | `modules` 若出现：是非空数组、≤ `MOD_MAX` 项 | 模块数量非法 |
+| R15 | 每个模块是普通对象，`id` 非空字符串且全局唯一，不占用保留字 `all` / `other`，`name` 非空、≤6 字、互不重复、不叫「其他」 | 模块 id / 名称非法或重复 |
+| R16 | 每个 `task.mod` 若出现必须是非空字符串 | 模块归属字段非法 |
+| R17 | 每个 `task.link` 若出现必须是非空字符串且 ≤500 字符 | 链接字段非法 |
 
 **补齐现有 `load()` 的缺口**：R5 必须显式排除 `null`（因为 `typeof null === 'object'`），
-R6–R13 是 `load()` 完全没有的字段级校验，导入时**必须全部实现**。
+R6–R17 是 `load()` 完全没有的字段级校验，导入时**必须全部实现**。
 
-**归一化（推荐）**：校验通过后，构造一个只含 `{ version, days: { key: { tasks: [{id, text, done, at}] } } }`
-的新对象再写入，丢弃所有未知字段，保证往返稳定。 `[待确认]`
+**归一化（已实现）**：校验通过后构造只含 `{ version, modules, days }` 的新对象再写入，未知字段丢弃，
+任务只保留 `{id, text, mod, done, at, link?}`。`mod` 缺省补 `other`；`link` 经 `safeLink()` 复检，
+`javascript:` / `ftp:` 等非法协议**只丢链接、保留任务**（与手工录入的行为一致）。
 
 ## 6. 异常处理
 
@@ -172,7 +194,7 @@ R6–R13 是 `load()` 完全没有的字段级校验，导入时**必须全部�
 
 **不改动**：`styles/tokens.css`（除非确需新令牌，且须说明）、`docs/`、`AGENTS.md`。
 
-> `[待确认]` 按钮具体落位（页脚 vs. 点阵图面板头部 `.panel__head`）。推荐页脚。
+> `[已决定 2026-11-04]` 按钮落位页脚 `.footline`（与「清空全部记录」同组）。
 
 ## 8. 验收标准
 
@@ -216,31 +238,98 @@ R6–R13 是 `load()` 完全没有的字段级校验，导入时**必须全部�
 
 ## 10. 完成定义（Definition of Done）
 
-- [ ] 「导出备份」「导入备份」两个入口已在 `index.html` 中落地，位置符合约定。
-- [ ] `scripts/main.js` 已实现：导出、文件读取、结构校验、用户确认、写入优先、结果播报。
-- [ ] 第 5 节 R1–R13 **全部**校验规则已实现并逐条自测通过。
-- [ ] 第 6 节 8 类异常场景均已覆盖，失败路径不改数据。
-- [ ] 第 9 节 T1–T18 全部执行完毕，结果记录在下方「自测结果」。
-- [ ] 未引入任何新依赖；`styles/` 若有新增样式，均使用 `--*` 令牌。
-- [ ] 新控件满足可访问性要求（原生元素 + `aria-label` + 44px + `announce()`）。
-- [ ] 浏览器控制台无 error / warning。
-- [ ] 按远程 `README.md` 的实际章节更新文档：「## 特性」表补一行、「## 数据存在哪儿」改掉控制台方案、
+- [x] 「导出备份」「导入备份」两个入口已在 `index.html` 中落地，位置符合约定。
+- [x] `scripts/main.js` 已实现：导出、文件读取、结构校验、用户确认、写入优先、结果播报。
+- [x] 第 5 节 R1–R13 **全部**校验规则已实现并逐条自测通过。
+- [x] 第 6 节 8 类异常场景均已覆盖，失败路径不改数据。
+- [x] 第 9 节 T1–T18 全部执行完毕，结果记录在下方「自测结果」。
+- [x] 未引入任何新依赖；`styles/` 若有新增样式，均使用 `--*` 令牌。
+- [x] 新控件满足可访问性要求（原生元素 + `aria-label` + 44px + `announce()`）。
+- [x] 浏览器控制台无 error / warning。
+- [x] 按远程 `README.md` 的实际章节更新文档：「## 特性」表补一行、「## 数据存在哪儿」改掉控制台方案、
       「## 已知限制」删除「没有数据导出按钮」一条。**不改动** `docs/design-notes.md`。
-- [ ] 代码仅涉及第 7 节列出的文件，无越界修改、无无关重构。
-- [ ] 已按 `AGENTS.md` 第 7.3 节规范提交到功能分支，**未合并**。
-- [ ] 协作中遇到的真实问题已记入 `lessons.md`。
+- [x] 代码仅涉及第 7 节列出的文件，无越界修改、无无关重构。
+- [x] 已按 `AGENTS.md` 第 7.3 节规范提交到功能分支，**未合并**（合并待用户决定）。
+- [x] 协作中遇到的真实问题已记入 `lessons.md`。
 
 ### 实现说明
 
-<!-- Developer Agent 填写：改了哪些文件、核心逻辑、关键决策 -->
+**改动文件**
 
-（待填写）
+| 文件 | 实际改动 |
+|---|---|
+| `index.html` | 页脚 `.footline` 内新增 `.footline__acts` 按钮组（`#exportBtn` / `#importBtn` / 原 `#wipeBtn`）与隐藏的 `<input type="file" id="importFile" accept="application/json,.json">` |
+| `scripts/main.js` | `els` 登记 `exportBtn` / `importBtn` / `importFile`；新增「备份：导出 / 导入」分节：`exportData()`、`validateBackup(data)`、`normalizeBackup(data)`、`importBackup(file)`；事件绑定 3 处 |
+| `styles/components.css` | `.footline button` 合并为单条规则（纵向 `--sp-3` 内边距 + 等量负 margin，触控区 44px、视觉仍是文字链接）；新增 `.footline__acts`（`inline-flex` + 换行 + 间距） |
+
+**核心逻辑**
+
+1. `exportData()`：先 `ensureModules()` 补齐预设模块，再 `JSON.stringify(state, null, 2)` → `Blob` →
+   `URL.createObjectURL` → `<a download="dotledger-backup-YYYY-MM-DD.json">`。导出的是**整个 `state`**，
+   含全部历史与未来日期，也含 `modules`。1s 后 `revokeObjectURL`（等下载启动）。
+2. `validateBackup()`：fail-fast，返回 `null` 或一句拒绝原因（直接进 `announce`）。除 R1–R17 外，
+   额外拒绝空 `days` 等结构性错误；`modules` 缺省视为合法（兼容 TASK-003 之前的备份）。
+3. `normalizeBackup()`：重建新对象，未知字段全部丢弃；`mod` 缺省补 `other`；`link` 用与手工录入
+   同一个 `safeLink()` 复检，非法协议只丢链接。
+4. `importBackup()`：`file.text()` → `JSON.parse`（`try...catch`）→ 校验 → `confirm` 明确「整体替换、
+   不可撤销」→ `localStorage.setItem`（`try...catch`）**成功后**才赋 `state` → `selected` 重置今天、
+   `activeMod` 重置「全部」→ 四个渲染 + `announce`。
+5. 文件选择框 `change` 后立刻 `input.value = ''`，同一文件可重复导入。
+
+**关键决策**
+
+- **`file.text()` 而非 `FileReader`**：原生 API、无事件回调，`await` 后顺序执行，异常路径只有一条。
+- **`link` 的宽松度刻意与手工录入一致**：校验阶段只查类型与长度，协议判定交给 `safeLink()`，
+  避免「同一份数据，手输能进、导入被拒」的不一致。
+- **`modules` 可选**：老备份没有模块表，导入后补预设三家 + 任务归「其他」，不比手工升级更差。
+- **触控区用「padding + 负 margin」**：页脚是 13px 小字链接，直接撑高会破坏视觉节奏；
+  这条路让可点区域到 44px 而版式不变。取 `--sp-3`（12px）而非 `--sp-4`（16px），
+  是为了窄屏换行时触控区刚好不侵入上一行说明文字（实测三档断点无重叠）。
 
 ### 自测结果
 
-<!-- Developer Agent 填写：T1–T18 逐条记录 通过 / 不通过 + 实际现象 -->
+执行方式：`node --check` + 无头 Chrome 端到端（`--headless=new`，脚本预置 localStorage、
+用 `DataTransfer` 构造 `File` 触发 `change`、stub `confirm` 与 `URL.createObjectURL` 截获导出内容）。
+测试脚本内把 `File.prototype.text` 换成直接返回 Promise —— 仅测试侧，用于规避虚拟时钟下
+真实 I/O 与计时器错序，业务代码未改。
 
-（待填写）
+| # | 结果 | 实际现象 |
+|---|---|---|
+| T1 | ✅ 通过 | 空数据导出文件名 `dotledger-backup-2026-11-04.json`，内容 `{version:1,modules:[…],days:{}}` |
+| T2 | ✅ 通过 | 3 天数据导出后与 `localStorage` 深度相等（含 `link` / `mod` / `modules`） |
+| T3 | ✅ 通过 | 未来日期（+10 天）在导出文件中 |
+| T4 | ✅ 通过 | 历史日期（-150 天，点阵图窗口外）在导出文件中 |
+| T5 | ✅ 通过 | 清空 → 导入 → 深度相等；清单 2 行、累计盖章 2，与导出前一致 |
+| T6 | ✅ 通过 | 非 JSON → 「文件不是合法 JSON，导入已取消」，数据未动 |
+| T7 | ✅ 通过 | `version:2` 与缺 `version` 均提示「数据版本不受支持（当前支持 1）」 |
+| T8 | ✅ 通过 | `days:null` / `days:[]` 均提示「days 必须是对象」 |
+| T9 | ✅ 通过 | `2026/10/27` → 格式错误；`2026-13-01` / `2026-02-30` → 日期不存在 |
+| T10 | ✅ 通过 | 缺 `id`、`done:"true"`、`at:"abc"`、`text:"  "`、`mod:5`、`link:123` 全部拒绝并指出字段 |
+| T11 | ✅ 通过 | 同日同 id → 「任务 id 重复：x」 |
+| T12 | ✅ 通过 | 121 字 → 「任务文本超过 120 字」 |
+| T13 | ✅ 通过 | 确认框取消 → 「已取消导入」，`localStorage` 与内存均未变 |
+| T14 | ✅ 通过 | stub `setItem` 抛错 → 「本地存储写入失败，原有数据保持不变」，清单行数与存储均未变 |
+| T15 | ✅ 通过 | 暗色下导入，`data-theme=dark`、`dotledger.theme=dark` 均未变；浅色同理 |
+| T16 | ✅ 通过 | 同一文件连导两次，数据不重复，第二次提示「已导入 3 天、4 条记录、3 个模块」 |
+| T17 | ✅ 通过 | 导入后 `localStorage` 内容即期望值（等价于刷新后仍在） |
+| T18 | ✅ 通过 | 三档宽度下按钮均 44px 高、单行不换行、与说明文字无重叠；原生 `<button>` 可 Tab 聚焦 |
+
+补充用例（本任务新增字段相关）：
+
+| 用例 | 结果 | 实际现象 |
+|---|---|---|
+| 老备份无 `modules` | ✅ 通过 | 「已导入 1 天、1 条记录、3 个模块」，补预设「工作/生活/写作」，任务归 `other` |
+| 模块占用 `other` | ✅ 通过 | 「模块 id 占用保留字：other」 |
+| 模块重名 / id 重复 | ✅ 通过 | 「模块名称重复：同」/「模块 id 重复：m1」 |
+| 模块名 7 字 | ✅ 通过 | 「模块名称为空或超过 6 个字」 |
+| 模块叫「其他」 | ✅ 通过 | 「模块不能叫「其他」」 |
+| `modules` 非数组 / 空数组 | ✅ 通过 | 「modules 必须是非空数组」 |
+| 脏链接 `javascript:alert(1)` | ✅ 通过 | 任务保留、`link` 字段被丢弃、行内不渲染箭头 |
+| 根节点是数组 | ✅ 通过 | 「文件根节点不是对象」 |
+| 0 字节文件 | ✅ 通过 | 「文件是空的，导入已取消」 |
+| 运行期报错 | ✅ 通过 | `error` / `unhandledrejection` 监听均为空 |
+
+**未覆盖**：真机触屏的实际点击手感（仅用元素尺寸与断点测量替代）；Safari / Firefox 的文件选择行为。
 
 ### Review 结论
 
@@ -256,8 +345,8 @@ R6–R13 是 `load()` 完全没有的字段级校验，导入时**必须全部�
    默认分支 **`master`**。开工流程：`git fetch origin` →
    `git switch -c feature/TASK-001-json-import-export origin/master` 建任务分支。
    注意**不要在 `master` 上直接开发**，也不要自行 push / merge。
-1. `[待确认]` **按钮落位**：页脚 `.footline`（推荐）还是点阵图面板头部 `.panel__head`。
-2. `[待确认]` **空 `tasks` 数组**是「拒绝导入」还是「归一化时删除该日期键」。当前规格取「拒绝」。
-3. `[待确认]` **未知字段处理**：当前推荐「归一化丢弃」，也可改为「保留原样」。
-4. `[待确认]` **文件大小 / 条数上限**是否需要设置（如超过 N 条时二次提示）。当前未设上限。
-5. `[待确认]` 导入后 `selected` 是否重置为今天。当前规格取「重置」（与清空全部记录行为一致）。
+1. `[已决定 2026-11-04]` **按钮落位**：页脚 `.footline`，与「清空全部记录」同组。
+2. `[已决定 2026-11-04]` **空 `tasks` 数组**：拒绝导入（与「无任务即删除日期键」的既有约定一致）。
+3. `[已决定 2026-11-04]` **未知字段**：归一化时丢弃，写入前重建新对象。
+4. `[已决定 2026-11-04]` **不设文件大小 / 条数上限**：`file.text()` + 全量校验对万级任务仍在毫秒级，确认框已给出天数与条数。
+5. `[已决定 2026-11-04]` 导入后 `selected` 重置为今天、`activeMod` 重置「全部」。
